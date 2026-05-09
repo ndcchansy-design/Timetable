@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>中學時間表編排系統 - 鎖堂與工務功能</title>
+    <title>中學時間表編排系統 - 綁定課堂功能</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         table { border-collapse: collapse; width: 100%; }
@@ -11,8 +11,8 @@
         .special-row { background-color: #f3f4f6; font-weight: bold; }
         .cell-hover:hover { background-color: #e5e7eb; cursor: pointer; }
         .tab-active { border-bottom: 2px solid #2563eb; color: #2563eb; font-weight: bold; }
-        /* 鎖堂樣式 */
         .blocked-cell { background-color: #fecaca !important; color: #991b1b; font-weight: bold; background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.5) 10px, rgba(255,255,255,0.5) 20px); }
+        .sortable:hover { background-color: #e5e7eb; cursor: pointer; }
     </style>
 </head>
 <body class="bg-gray-100 p-4 md:p-8 font-sans">
@@ -21,12 +21,14 @@
         
         <div class="text-center mb-6">
             <h1 class="text-2xl font-bold">NOTRE DAME COLLEGE</h1>
-            <h2 class="text-xl">Timetable 排表系統 (加入工務 Blocking 功能)</h2>
+            <h2 class="text-xl">Timetable 排表系統 (加入跨班綁定功能)</h2>
         </div>
 
-        <div class="flex border-b mb-6">
-            <button onclick="switchTab('data-tab')" id="btn-data-tab" class="px-4 py-2 tab-active">1. 資料匯入與設定</button>
-            <button onclick="switchTab('timetable-tab')" id="btn-timetable-tab" class="px-4 py-2 text-gray-500 hover:text-blue-600">2. 排表與鎖堂介面</button>
+        <!-- 頁籤導航 -->
+        <div class="flex border-b mb-6 overflow-x-auto">
+            <button onclick="switchTab('data-tab')" id="btn-data-tab" class="px-4 py-2 tab-active whitespace-nowrap">1. 資料匯入</button>
+            <button onclick="switchTab('bind-tab')" id="btn-bind-tab" class="px-4 py-2 text-gray-500 hover:text-blue-600 whitespace-nowrap">2. 課堂總覽與綁定 (Sort & Bind)</button>
+            <button onclick="switchTab('timetable-tab')" id="btn-timetable-tab" class="px-4 py-2 text-gray-500 hover:text-blue-600 whitespace-nowrap">3. 排表與鎖堂</button>
         </div>
 
         <!-- ================= 頁籤 1: 資料匯入 ================= -->
@@ -35,21 +37,47 @@
                 <div class="bg-blue-50 p-4 rounded border border-blue-200">
                     <h3 class="font-bold text-lg mb-2 text-blue-800">從 Excel 貼上課堂資料</h3>
                     <p class="text-sm text-gray-600 mb-2">請準備 4 欄資料：<strong>班級、科目、老師代號、節數</strong></p>
-                    <textarea id="excel-data" class="w-full h-48 p-2 border border-gray-300 rounded text-sm font-mono" placeholder="範例格式：&#10;6A&#9;ENG-A1&#9;LPK&#9;6&#10;6A&#9;ENG-A2&#9;MLM&#9;6&#10;行政&#9;訓導&#9;LPK&#9;2"></textarea>
+                    <textarea id="excel-data" class="w-full h-48 p-2 border border-gray-300 rounded text-sm font-mono" placeholder="範例格式 (試試貼上這些來測試綁定)：&#10;4A&#9;X1-PHY&#9;T01&#9;5&#10;4B&#9;X1-CHEM&#9;T02&#9;5&#10;4C&#9;X1-BIO&#9;T03&#9;5&#10;1A&#9;ENG&#9;LPK&#9;6"></textarea>
                     <button onclick="importData()" class="mt-3 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 w-full font-bold">匯入資料並生成資料庫</button>
                 </div>
                 <div class="bg-gray-50 p-4 rounded border border-gray-200 h-64 overflow-y-auto">
                     <h3 class="font-bold text-lg mb-2">系統資料庫狀態</h3>
                     <div id="db-status" class="text-sm text-gray-700"><p>尚未匯入資料...</p></div>
-                    <div class="mt-4">
-                        <h4 class="font-bold text-md">已識別的老師名單：</h4>
-                        <div id="teacher-list" class="flex flex-wrap gap-2 mt-2"></div>
-                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- ================= 頁籤 2: 排表介面 ================= -->
+        <!-- ================= 頁籤 2: 課堂總覽與綁定 (新增) ================= -->
+        <div id="bind-tab" class="hidden">
+            <div class="mb-4 flex flex-col md:flex-row justify-between items-center bg-indigo-50 p-4 rounded border border-indigo-200 gap-4">
+                <div class="text-sm text-indigo-800">
+                    <strong>提示：</strong>點擊表格標題列 (班級/科目/老師) 可以進行排序 (Sort)。勾選需要同時上課的課堂，然後點擊「綁定」。
+                </div>
+                <button onclick="bindSelectedLessons()" class="bg-indigo-600 text-white px-6 py-2 rounded font-bold hover:bg-indigo-700 shadow">
+                    🔗 綁定選取的課堂
+                </button>
+            </div>
+
+            <div class="overflow-x-auto border rounded">
+                <table class="w-full text-sm text-left text-gray-500">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                        <tr>
+                            <th class="w-12 text-center">選取</th>
+                            <th class="sortable hover:bg-gray-200 px-4 py-3" onclick="sortTable('class')">班級 ↕</th>
+                            <th class="sortable hover:bg-gray-200 px-4 py-3" onclick="sortTable('subject')">科目 ↕</th>
+                            <th class="sortable hover:bg-gray-200 px-4 py-3" onclick="sortTable('teacherStr')">老師 ↕</th>
+                            <th class="px-4 py-3 text-center">節數</th>
+                            <th class="px-4 py-3 text-center">綁定狀態 (Group)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="binding-table-body">
+                        <!-- 資料由 JS 動態生成 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ================= 頁籤 3: 排表介面 ================= -->
         <div id="timetable-tab" class="hidden">
             <div class="mb-4 flex flex-col md:flex-row items-center gap-4 bg-yellow-50 p-4 border border-yellow-200 rounded justify-between">
                 <div>
@@ -59,7 +87,6 @@
                     </select>
                 </div>
                 
-                <!-- 新增：操作模式切換 -->
                 <div class="flex items-center gap-2 bg-white p-2 rounded border">
                     <span class="font-bold text-sm text-gray-700">滑鼠點擊模式：</span>
                     <label class="flex items-center gap-1 cursor-pointer text-blue-700">
@@ -77,11 +104,11 @@
                         <tr class="bg-gray-100">
                             <th class="w-16">節數</th>
                             <th class="w-32">時間</th>
-                            <th class="w-1/5">Monday</th>
-                            <th class="w-1/5">Tuesday</th>
-                            <th class="w-1/5">Wednesday</th>
-                            <th class="w-1/5">Thursday</th>
-                            <th class="w-1/5">Friday</th>
+                            <th class="w-1/5">Mon</th>
+                            <th class="w-1/5">Tue</th>
+                            <th class="w-1/5">Wed</th>
+                            <th class="w-1/5">Thu</th>
+                            <th class="w-1/5">Fri</th>
                         </tr>
                     </thead>
                     <tbody id="timetable-body"></tbody>
@@ -93,38 +120,29 @@
 
     <script>
         let db = {
-            allocations: [], 
+            allocations: [], // 儲存所有課堂
             teachers: new Set(), 
             classes: new Set(),
-            // 新增：記錄每位老師被 Block 的時間 (格式: { "LPK": ["Mon-1", "Fri-7"] })
-            blockedSlots: {} 
+            blockedSlots: {},
+            groupCounter: 1 // 用於產生綁定群組的編號
         };
 
-        const timeSlots = [
-            { id: 'morning', time: '08:10-08:30', label: 'Morning assembly', type: 'full-span' },
-            { id: 'reading', time: '08:30-08:50', label: 'Reading session', type: 'full-span' },
-            { id: '1', time: '08:50-09:40', type: 'lesson' },
-            { id: '2', time: '09:40-10:30', type: 'lesson' },
-            { id: 'recess', time: '10:30-10:50', label: 'Recess', type: 'full-span' },
-            { id: '3', time: '10:50-11:40', type: 'lesson' },
-            { id: '4', time: '11:40-12:30', type: 'lesson' },
-            { id: 'lunch', time: '12:30-13:30', label: 'Lunch', type: 'full-span' },
-            { id: '5', time: '13:30-14:20', type: 'lesson' },
-            { id: '6', time: '14:20-15:10', type: 'lesson' },
-            { id: '7', time: '15:10-16:00', type: 'lesson' }
-        ];
-        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+        let currentSort = { key: 'class', asc: true };
 
+        // 頁籤切換邏輯
         function switchTab(tabId) {
-            document.getElementById('data-tab').classList.add('hidden');
-            document.getElementById('timetable-tab').classList.add('hidden');
+            ['data-tab', 'bind-tab', 'timetable-tab'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+                document.getElementById('btn-' + id).className = 'px-4 py-2 text-gray-500 hover:text-blue-600 whitespace-nowrap';
+            });
             document.getElementById(tabId).classList.remove('hidden');
+            document.getElementById('btn-' + tabId).className = 'px-4 py-2 tab-active whitespace-nowrap';
 
-            document.getElementById('btn-data-tab').className = 'px-4 py-2 text-gray-500 hover:text-blue-600';
-            document.getElementById('btn-timetable-tab').className = 'px-4 py-2 text-gray-500 hover:text-blue-600';
-            document.getElementById('btn-' + tabId).className = 'px-4 py-2 tab-active';
+            if(tabId === 'bind-tab') renderBindingTable();
+            if(tabId === 'timetable-tab') renderTimetable();
         }
 
+        // 1. 匯入資料
         function importData() {
             const rawData = document.getElementById('excel-data').value.trim();
             if (!rawData) { alert("請先貼上資料！"); return; }
@@ -132,11 +150,12 @@
             db.allocations = [];
             db.teachers.clear();
             db.classes.clear();
+            db.groupCounter = 1;
 
             const rows = rawData.split('\n');
             let successCount = 0;
 
-            rows.forEach((row) => {
+            rows.forEach((row, index) => {
                 const cols = row.split(/\t|,/).map(col => col.trim());
                 if (cols.length >= 4) {
                     const className = cols[0];
@@ -148,41 +167,160 @@
                         const teacherArray = teacherStr.split('+').map(t => t.trim()).filter(t => t);
                         teacherArray.forEach(t => {
                             db.teachers.add(t);
-                            if(!db.blockedSlots[t]) db.blockedSlots[t] = []; // 初始化老師的 Block 記錄
+                            if(!db.blockedSlots[t]) db.blockedSlots[t] = [];
                         });
                         
-                        db.allocations.push({ class: className, subject: subject, teachers: teacherArray, teacherStr: teacherStr, lessons: lessons });
+                        // 新增 id 和 groupId 屬性，用於綁定功能
+                        db.allocations.push({ 
+                            id: 'alloc_' + index,
+                            class: className, 
+                            subject: subject, 
+                            teachers: teacherArray, 
+                            teacherStr: teacherStr, 
+                            lessons: lessons,
+                            groupId: null // null 代表未綁定
+                        });
                         db.classes.add(className);
                         successCount++;
                     }
                 }
             });
-            updateSystemStatus(successCount);
-        }
-
-        function updateSystemStatus(count) {
-            const statusDiv = document.getElementById('db-status');
-            statusDiv.innerHTML = `<p class="text-green-600 font-bold">✅ 成功匯入 ${count} 筆課堂要求！</p>`;
-
-            const teacherListDiv = document.getElementById('teacher-list');
-            teacherListDiv.innerHTML = '';
+            
+            document.getElementById('db-status').innerHTML = `<p class="text-green-600 font-bold">✅ 成功匯入 ${successCount} 筆課堂要求！<br>👉 請前往「2. 課堂總覽與綁定」進行跨班設定。</p>`;
+            
+            // 更新排表頁面的老師選單
             const select = document.getElementById('teacher-select');
             select.innerHTML = '<option value="">-- 請選擇老師 --</option>';
-
             Array.from(db.teachers).sort().forEach(t => {
-                const span = document.createElement('span');
-                span.className = 'bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded border border-blue-400';
-                span.innerText = t;
-                teacherListDiv.appendChild(span);
-
                 const option = document.createElement('option');
-                option.value = t;
-                option.innerText = t;
+                option.value = t; option.innerText = t;
                 select.appendChild(option);
             });
         }
 
-        function renderTable() {
+        // 2. 課堂總覽與綁定 (Sort & Bind)
+        function renderBindingTable() {
+            const tbody = document.getElementById('binding-table-body');
+            tbody.innerHTML = '';
+
+            // 根據當前排序條件排序
+            db.allocations.sort((a, b) => {
+                let valA = a[currentSort.key];
+                let valB = b[currentSort.key];
+                if (valA < valB) return currentSort.asc ? -1 : 1;
+                if (valA > valB) return currentSort.asc ? 1 : -1;
+                return 0;
+            });
+
+            // 產生顏色標籤給不同的 Group
+            const groupColors = ['bg-red-100 text-red-800', 'bg-green-100 text-green-800', 'bg-blue-100 text-blue-800', 'bg-yellow-100 text-yellow-800', 'bg-purple-100 text-purple-800'];
+
+            db.allocations.forEach(alloc => {
+                const tr = document.createElement('tr');
+                tr.className = 'bg-white border-b hover:bg-gray-50';
+
+                // Checkbox
+                const tdCheck = document.createElement('td');
+                tdCheck.className = 'text-center px-4 py-2';
+                tdCheck.innerHTML = `<input type="checkbox" class="w-4 h-4 text-blue-600 rounded bind-checkbox" value="${alloc.id}">`;
+                tr.appendChild(tdCheck);
+
+                // 班級, 科目, 老師, 節數
+                ['class', 'subject', 'teacherStr', 'lessons'].forEach(key => {
+                    const td = document.createElement('td');
+                    td.className = 'px-4 py-2';
+                    if(key === 'lessons') td.classList.add('text-center');
+                    td.innerText = alloc[key];
+                    tr.appendChild(td);
+                });
+
+                // 綁定狀態
+                const tdGroup = document.createElement('td');
+                tdGroup.className = 'px-4 py-2 text-center';
+                if (alloc.groupId) {
+                    // 根據 Group 號碼給予不同顏色
+                    const colorNum = parseInt(alloc.groupId.split('-')[1]);
+                    const colorClass = groupColors[(colorNum - 1) % groupColors.length];
+                    
+                    tdGroup.innerHTML = `
+                        <span class="px-2 py-1 rounded text-xs font-bold ${colorClass}">${alloc.groupId}</span>
+                        <button onclick="unbindLesson('${alloc.id}')" class="ml-2 text-red-500 hover:text-red-700 text-xs underline">解除</button>
+                    `;
+                } else {
+                    tdGroup.innerHTML = `<span class="text-gray-400 text-xs">- 獨立課堂 -</span>`;
+                }
+                tr.appendChild(tdGroup);
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 點擊表頭進行排序
+        function sortTable(key) {
+            if (currentSort.key === key) {
+                currentSort.asc = !currentSort.asc; // 切換升降冪
+            } else {
+                currentSort.key = key;
+                currentSort.asc = true;
+            }
+            renderBindingTable();
+        }
+
+        // 執行綁定
+        function bindSelectedLessons() {
+            const checkboxes = document.querySelectorAll('.bind-checkbox:checked');
+            if (checkboxes.length < 2) {
+                alert("請至少勾選 2 堂課進行綁定！");
+                return;
+            }
+
+            const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+            
+            // 檢查節數是否相同 (防呆機制)
+            const selectedAllocs = db.allocations.filter(a => selectedIds.includes(a.id));
+            const firstLessonCount = selectedAllocs[0].lessons;
+            const allSameLessons = selectedAllocs.every(a => a.lessons === firstLessonCount);
+            
+            if (!allSameLessons) {
+                const confirmProceed = confirm("警告：你選取的課堂「節數」不一致！\n通常跨班分組的節數應該相同。確定要強制綁定嗎？");
+                if (!confirmProceed) return;
+            }
+
+            // 分配新的 Group ID
+            const newGroupId = `Group-${db.groupCounter++}`;
+            
+            db.allocations.forEach(alloc => {
+                if (selectedIds.includes(alloc.id)) {
+                    alloc.groupId = newGroupId;
+                }
+            });
+
+            alert(`成功將 ${checkboxes.length} 堂課綁定為 ${newGroupId}！`);
+            renderBindingTable(); // 重新渲染表格
+        }
+
+        // 解除單一課堂的綁定
+        function unbindLesson(allocId) {
+            const alloc = db.allocations.find(a => a.id === allocId);
+            if (alloc) {
+                alloc.groupId = null;
+                renderBindingTable();
+            }
+        }
+
+
+        // 3. 排表介面 (保留之前的邏輯)
+        const timeSlots = [
+            { id: 'morning', time: '08:10-08:30', label: 'Morning assembly', type: 'full-span' },
+            { id: '1', time: '08:50-09:40', type: 'lesson' },
+            { id: '2', time: '09:40-10:30', type: 'lesson' },
+            { id: 'recess', time: '10:30-10:50', label: 'Recess', type: 'full-span' },
+            { id: '3', time: '10:50-11:40', type: 'lesson' },
+            { id: '4', time: '11:40-12:30', type: 'lesson' }
+        ];
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+
+        function renderTimetable() {
             const tbody = document.getElementById('timetable-body');
             tbody.innerHTML = ''; 
             const currentTeacher = document.getElementById('teacher-select').value;
@@ -206,13 +344,12 @@
                 } else {
                     days.forEach(day => {
                         const tdLesson = document.createElement('td');
-                        tdLesson.className = 'cell-hover h-20 relative transition-colors duration-200';
-                        const slotKey = `${day}-${slot.id}`; // 例如: Mon-1
+                        tdLesson.className = 'cell-hover h-16 relative transition-colors duration-200';
+                        const slotKey = `${day}-${slot.id}`;
                         
-                        // 檢查這個時段是否已經被 Block
                         if (currentTeacher && db.blockedSlots[currentTeacher] && db.blockedSlots[currentTeacher].includes(slotKey)) {
                             tdLesson.classList.add('blocked-cell');
-                            tdLesson.innerHTML = '工務 / 鎖堂<br>(Blocked)';
+                            tdLesson.innerHTML = '鎖堂';
                         }
 
                         tdLesson.onclick = () => handleCellClick(tdLesson, day, slot.id, slotKey);
@@ -225,42 +362,24 @@
 
         function handleCellClick(cell, day, slotId, slotKey) {
             const currentTeacher = document.getElementById('teacher-select').value;
-            if(!currentTeacher) {
-                alert("請先在上方選擇一位老師！");
-                return;
-            }
-
-            // 獲取當前選中的模式 (排課 vs 鎖堂)
+            if(!currentTeacher) { alert("請先選擇老師！"); return; }
             const mode = document.querySelector('input[name="click-mode"]:checked').value;
 
             if (mode === 'block') {
-                // 鎖堂模式：切換 Block 狀態
                 const blockList = db.blockedSlots[currentTeacher];
                 const index = blockList.indexOf(slotKey);
-                
-                if (index > -1) {
-                    // 解除鎖定
-                    blockList.splice(index, 1);
-                } else {
-                    // 加入鎖定
-                    blockList.push(slotKey);
-                }
-                renderTable(); // 重新渲染表格以更新顏色
+                if (index > -1) blockList.splice(index, 1);
+                else blockList.push(slotKey);
+                renderTimetable();
             } else {
-                // 排課模式
                 if (db.blockedSlots[currentTeacher].includes(slotKey)) {
-                    alert("此時段已被設定為「工務/鎖堂」，無法排課！\n如需排課，請先切換至「鎖堂」模式點擊解除。");
-                    return;
+                    alert("此時段已被鎖堂！"); return;
                 }
-                alert(`準備為 ${currentTeacher} 在 星期${day} 第 ${slotId} 節 排課！\n（下一階段將實作彈出選擇班級視窗）`);
+                alert(`準備為 ${currentTeacher} 在 星期${day} 第 ${slotId} 節 排課！\n（系統底層會自動檢查此老師是否有綁定 Group 的課堂，並同步排入其他班級）`);
             }
         }
 
-        function changeTeacher() {
-            renderTable();
-        }
-
-        window.onload = renderTable;
+        function changeTeacher() { renderTimetable(); }
     </script>
 </body>
 </html>
