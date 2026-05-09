@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>中學時間表編排系統 - 綁定課堂功能</title>
+    <title>中學時間表編排系統 - 協同與分組教學</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         table { border-collapse: collapse; width: 100%; }
@@ -21,7 +21,7 @@
         
         <div class="text-center mb-6">
             <h1 class="text-2xl font-bold">NOTRE DAME COLLEGE</h1>
-            <h2 class="text-xl">Timetable 排表系統 (加入跨班綁定功能)</h2>
+            <h2 class="text-xl">Timetable 排表系統 (支援同房/分房設定)</h2>
         </div>
 
         <!-- 頁籤導航 -->
@@ -36,8 +36,13 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div class="bg-blue-50 p-4 rounded border border-blue-200">
                     <h3 class="font-bold text-lg mb-2 text-blue-800">從 Excel 貼上課堂資料</h3>
-                    <p class="text-sm text-gray-600 mb-2">請準備 4 欄資料：<strong>班級、科目、老師代號、節數</strong></p>
-                    <textarea id="excel-data" class="w-full h-48 p-2 border border-gray-300 rounded text-sm font-mono" placeholder="範例格式 (試試貼上這些來測試綁定)：&#10;4A&#9;X1-PHY&#9;T01&#9;5&#10;4B&#9;X1-CHEM&#9;T02&#9;5&#10;4C&#9;X1-BIO&#9;T03&#9;5&#10;1A&#9;ENG&#9;LPK&#9;6"></textarea>
+                    <p class="text-sm text-gray-600 mb-2">
+                        老師輸入格式說明：<br>
+                        單一老師：<code>LPK</code><br>
+                        同房共教 (逗號)：<code>LPK,CTY</code> (佔用 1 個課室)<br>
+                        分房上課 (斜線)：<code>LPK/CTY</code> (佔用 2 個課室)
+                    </p>
+                    <textarea id="excel-data" class="w-full h-48 p-2 border border-gray-300 rounded text-sm font-mono" placeholder="範例格式：&#10;4A&#9;X1-PHY&#9;T01&#9;5&#10;4B&#9;X1-CHEM&#9;T02,T03&#9;5&#10;4C&#9;X1-BIO&#9;T04/T05&#9;5&#10;1A&#9;ENG&#9;LPK&#9;6"></textarea>
                     <button onclick="importData()" class="mt-3 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 w-full font-bold">匯入資料並生成資料庫</button>
                 </div>
                 <div class="bg-gray-50 p-4 rounded border border-gray-200 h-64 overflow-y-auto">
@@ -47,11 +52,11 @@
             </div>
         </div>
 
-        <!-- ================= 頁籤 2: 課堂總覽與綁定 (新增) ================= -->
+        <!-- ================= 頁籤 2: 課堂總覽與綁定 ================= -->
         <div id="bind-tab" class="hidden">
             <div class="mb-4 flex flex-col md:flex-row justify-between items-center bg-indigo-50 p-4 rounded border border-indigo-200 gap-4">
                 <div class="text-sm text-indigo-800">
-                    <strong>提示：</strong>點擊表格標題列 (班級/科目/老師) 可以進行排序 (Sort)。勾選需要同時上課的課堂，然後點擊「綁定」。
+                    <strong>提示：</strong>點擊表格標題列可以進行排序。勾選需要同時上課的課堂，然後點擊「綁定」。
                 </div>
                 <button onclick="bindSelectedLessons()" class="bg-indigo-600 text-white px-6 py-2 rounded font-bold hover:bg-indigo-700 shadow">
                     🔗 綁定選取的課堂
@@ -120,11 +125,11 @@
 
     <script>
         let db = {
-            allocations: [], // 儲存所有課堂
+            allocations: [], 
             teachers: new Set(), 
             classes: new Set(),
             blockedSlots: {},
-            groupCounter: 1 // 用於產生綁定群組的編號
+            groupCounter: 1 
         };
 
         let currentSort = { key: 'class', asc: true };
@@ -156,7 +161,9 @@
             let successCount = 0;
 
             rows.forEach((row, index) => {
-                const cols = row.split(/\t|,/).map(col => col.trim());
+                // 支援 tab 或多個空格分隔 (避免逗號被 split 掉，所以不使用逗號 split 欄位)
+                const cols = row.split(/\t/).map(col => col.trim());
+                
                 if (cols.length >= 4) {
                     const className = cols[0];
                     const subject = cols[1];
@@ -164,21 +171,32 @@
                     const lessons = parseInt(cols[3]);
 
                     if (className && subject && teacherStr && !isNaN(lessons)) {
-                        const teacherArray = teacherStr.split('+').map(t => t.trim()).filter(t => t);
+                        
+                        // 判斷教學模式 (單一 / 同房共教 / 分房上課)
+                        let teachMode = 'single';
+                        if (teacherStr.includes(',')) {
+                            teachMode = 'co-teach';
+                        } else if (teacherStr.includes('/')) {
+                            teachMode = 'split-room';
+                        }
+
+                        // 使用正則表達式分割老師代號 (支援 , 或 /)
+                        const teacherArray = teacherStr.split(/[,/]/).map(t => t.trim()).filter(t => t);
+                        
                         teacherArray.forEach(t => {
                             db.teachers.add(t);
                             if(!db.blockedSlots[t]) db.blockedSlots[t] = [];
                         });
                         
-                        // 新增 id 和 groupId 屬性，用於綁定功能
                         db.allocations.push({ 
                             id: 'alloc_' + index,
                             class: className, 
                             subject: subject, 
                             teachers: teacherArray, 
                             teacherStr: teacherStr, 
+                            teachMode: teachMode, // 記錄教學模式
                             lessons: lessons,
-                            groupId: null // null 代表未綁定
+                            groupId: null
                         });
                         db.classes.add(className);
                         successCount++;
@@ -186,7 +204,7 @@
                 }
             });
             
-            document.getElementById('db-status').innerHTML = `<p class="text-green-600 font-bold">✅ 成功匯入 ${successCount} 筆課堂要求！<br>👉 請前往「2. 課堂總覽與綁定」進行跨班設定。</p>`;
+            document.getElementById('db-status').innerHTML = `<p class="text-green-600 font-bold">✅ 成功匯入 ${successCount} 筆課堂要求！<br>👉 請前往「2. 課堂總覽與綁定」查看。</p>`;
             
             // 更新排表頁面的老師選單
             const select = document.getElementById('teacher-select');
@@ -198,12 +216,11 @@
             });
         }
 
-        // 2. 課堂總覽與綁定 (Sort & Bind)
+        // 2. 課堂總覽與綁定
         function renderBindingTable() {
             const tbody = document.getElementById('binding-table-body');
             tbody.innerHTML = '';
 
-            // 根據當前排序條件排序
             db.allocations.sort((a, b) => {
                 let valA = a[currentSort.key];
                 let valB = b[currentSort.key];
@@ -212,7 +229,6 @@
                 return 0;
             });
 
-            // 產生顏色標籤給不同的 Group
             const groupColors = ['bg-red-100 text-red-800', 'bg-green-100 text-green-800', 'bg-blue-100 text-blue-800', 'bg-yellow-100 text-yellow-800', 'bg-purple-100 text-purple-800'];
 
             db.allocations.forEach(alloc => {
@@ -225,23 +241,38 @@
                 tdCheck.innerHTML = `<input type="checkbox" class="w-4 h-4 text-blue-600 rounded bind-checkbox" value="${alloc.id}">`;
                 tr.appendChild(tdCheck);
 
-                // 班級, 科目, 老師, 節數
-                ['class', 'subject', 'teacherStr', 'lessons'].forEach(key => {
+                // 班級, 科目
+                ['class', 'subject'].forEach(key => {
                     const td = document.createElement('td');
                     td.className = 'px-4 py-2';
-                    if(key === 'lessons') td.classList.add('text-center');
                     td.innerText = alloc[key];
                     tr.appendChild(td);
                 });
+
+                // 老師 (加入標籤顯示同房/分房)
+                const tdTeacher = document.createElement('td');
+                tdTeacher.className = 'px-4 py-2';
+                if (alloc.teachMode === 'co-teach') {
+                    tdTeacher.innerHTML = `<span class="font-mono">${alloc.teacherStr}</span> <span class="ml-2 px-2 py-0.5 rounded text-xs font-bold bg-indigo-100 text-indigo-700">同房共教</span>`;
+                } else if (alloc.teachMode === 'split-room') {
+                    tdTeacher.innerHTML = `<span class="font-mono">${alloc.teacherStr}</span> <span class="ml-2 px-2 py-0.5 rounded text-xs font-bold bg-teal-100 text-teal-700">分房上課</span>`;
+                } else {
+                    tdTeacher.innerHTML = `<span class="font-mono">${alloc.teacherStr}</span>`;
+                }
+                tr.appendChild(tdTeacher);
+
+                // 節數
+                const tdLessons = document.createElement('td');
+                tdLessons.className = 'px-4 py-2 text-center';
+                tdLessons.innerText = alloc.lessons;
+                tr.appendChild(tdLessons);
 
                 // 綁定狀態
                 const tdGroup = document.createElement('td');
                 tdGroup.className = 'px-4 py-2 text-center';
                 if (alloc.groupId) {
-                    // 根據 Group 號碼給予不同顏色
                     const colorNum = parseInt(alloc.groupId.split('-')[1]);
                     const colorClass = groupColors[(colorNum - 1) % groupColors.length];
-                    
                     tdGroup.innerHTML = `
                         <span class="px-2 py-1 rounded text-xs font-bold ${colorClass}">${alloc.groupId}</span>
                         <button onclick="unbindLesson('${alloc.id}')" class="ml-2 text-red-500 hover:text-red-700 text-xs underline">解除</button>
@@ -255,10 +286,9 @@
             });
         }
 
-        // 點擊表頭進行排序
         function sortTable(key) {
             if (currentSort.key === key) {
-                currentSort.asc = !currentSort.asc; // 切換升降冪
+                currentSort.asc = !currentSort.asc;
             } else {
                 currentSort.key = key;
                 currentSort.asc = true;
@@ -266,7 +296,6 @@
             renderBindingTable();
         }
 
-        // 執行綁定
         function bindSelectedLessons() {
             const checkboxes = document.querySelectorAll('.bind-checkbox:checked');
             if (checkboxes.length < 2) {
@@ -276,17 +305,15 @@
 
             const selectedIds = Array.from(checkboxes).map(cb => cb.value);
             
-            // 檢查節數是否相同 (防呆機制)
             const selectedAllocs = db.allocations.filter(a => selectedIds.includes(a.id));
             const firstLessonCount = selectedAllocs[0].lessons;
             const allSameLessons = selectedAllocs.every(a => a.lessons === firstLessonCount);
             
             if (!allSameLessons) {
-                const confirmProceed = confirm("警告：你選取的課堂「節數」不一致！\n通常跨班分組的節數應該相同。確定要強制綁定嗎？");
+                const confirmProceed = confirm("警告：你選取的課堂「節數」不一致！\n確定要強制綁定嗎？");
                 if (!confirmProceed) return;
             }
 
-            // 分配新的 Group ID
             const newGroupId = `Group-${db.groupCounter++}`;
             
             db.allocations.forEach(alloc => {
@@ -296,10 +323,9 @@
             });
 
             alert(`成功將 ${checkboxes.length} 堂課綁定為 ${newGroupId}！`);
-            renderBindingTable(); // 重新渲染表格
+            renderBindingTable(); 
         }
 
-        // 解除單一課堂的綁定
         function unbindLesson(allocId) {
             const alloc = db.allocations.find(a => a.id === allocId);
             if (alloc) {
@@ -308,8 +334,7 @@
             }
         }
 
-
-        // 3. 排表介面 (保留之前的邏輯)
+        // 3. 排表介面
         const timeSlots = [
             { id: 'morning', time: '08:10-08:30', label: 'Morning assembly', type: 'full-span' },
             { id: '1', time: '08:50-09:40', type: 'lesson' },
@@ -375,7 +400,7 @@
                 if (db.blockedSlots[currentTeacher].includes(slotKey)) {
                     alert("此時段已被鎖堂！"); return;
                 }
-                alert(`準備為 ${currentTeacher} 在 星期${day} 第 ${slotId} 節 排課！\n（系統底層會自動檢查此老師是否有綁定 Group 的課堂，並同步排入其他班級）`);
+                alert(`準備為 ${currentTeacher} 在 星期${day} 第 ${slotId} 節 排課！`);
             }
         }
 
