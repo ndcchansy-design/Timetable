@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中學時間表編排系統</title>
+    <!-- 引入 Tailwind CSS 方便快速排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 自訂一些表格邊框樣式，使其更像你提供的 Word 圖片 */
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #000; padding: 8px; text-align: center; }
+        .special-row { background-color: #f3f4f6; font-weight: bold; }
+        .cell-hover:hover { background-color: #e5e7eb; cursor: pointer; }
+    </style>
+</head>
+<body class="bg-gray-50 p-8 font-sans">
+
+    <div class="max-w-6xl mx-auto bg-white p-8 shadow-lg">
+        <!-- 標題區塊 -->
+        <div class="text-center mb-6 relative">
+            <h1 class="text-2xl font-bold">NOTRE DAME COLLEGE</h1>
+            <h2 class="text-xl">Timetable 排表系統 (開發中)</h2>
+            <h3 class="text-lg">2023 - 2024</h3>
+            
+            <div class="absolute top-0 right-0 border-4 border-black p-4 text-4xl font-bold">
+                <span id="current-teacher-code">YYK</span>
+            </div>
+        </div>
+        
+        <div class="mb-4 text-lg">
+            Teacher: <span id="current-teacher-name" class="font-bold">YEU YU KIN (饒汝堅)</span>
+        </div>
+
+        <!-- 時間表容器 -->
+        <div class="overflow-x-auto">
+            <table id="timetable">
+                <thead>
+                    <tr>
+                        <th class="w-16">節數</th>
+                        <th class="w-32">時間</th>
+                        <th class="w-1/5">Monday<br>星期一</th>
+                        <th class="w-1/5">Tuesday<br>星期二</th>
+                        <th class="w-1/5">Wednesday<br>星期三</th>
+                        <th class="w-1/5">Thursday<br>星期四</th>
+                        <th class="w-1/5">Friday<br>星期五</th>
+                    </tr>
+                </thead>
+                <tbody id="timetable-body">
+                    <!-- JavaScript 會在這裡動態生成行數 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // 定義每天的節數結構 (根據你的圖片)
+        const timeSlots = [
+            { id: 'morning', time: '08:10-08:30', label: 'Morning assembly and Class affairs 早會及班務', type: 'full-span' },
+            { id: 'reading', time: '08:30-08:50', label: 'Reading session 閱讀課', type: 'full-span' },
+            { id: '1', time: '08:50-09:40', type: 'lesson' },
+            { id: '2', time: '09:40-10:30', type: 'lesson' },
+            { id: 'recess', time: '10:30-10:50', label: 'Recess 小息', type: 'full-span' },
+            { id: '3', time: '10:50-11:40', type: 'lesson' },
+            { id: '4', time: '11:40-12:30', type: 'lesson' },
+            { id: 'lunch', time: '12:30-13:30', label: 'Lunch 午膳', type: 'full-span' },
+            { id: '5', time: '13:30-14:20', type: 'lesson' },
+            { id: '6', time: '14:20-15:10', type: 'lesson' },
+            { id: '7', time: '15:10-16:00<br>(功輔: 15:10-15:40)', type: 'lesson' }
+        ];
+
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+
+        // 渲染表格的函數
+        function renderTable() {
+            const tbody = document.getElementById('timetable-body');
+            tbody.innerHTML = ''; // 清空內容
+
+            timeSlots.forEach(slot => {
+                const tr = document.createElement('tr');
+
+                // 節數欄
+                const tdId = document.createElement('td');
+                tdId.innerHTML = slot.id.includes('morning') || slot.id.includes('reading') || slot.id.includes('recess') || slot.id.includes('lunch') ? '' : slot.id;
+                tr.appendChild(tdId);
+
+                // 時間欄
+                const tdTime = document.createElement('td');
+                tdTime.innerHTML = slot.time;
+                tr.appendChild(tdTime);
+
+                // 判斷是橫跨全週的活動(如小息)還是普通課堂
+                if (slot.type === 'full-span') {
+                    const tdSpan = document.createElement('td');
+                    tdSpan.colSpan = 5; // 橫跨 5 天
+                    tdSpan.className = 'special-row';
+                    tdSpan.innerHTML = slot.label;
+                    tr.appendChild(tdSpan);
+                } else {
+                    // 生成星期一至五的格子
+                    days.forEach(day => {
+                        const tdLesson = document.createElement('td');
+                        tdLesson.className = 'cell-hover h-20'; // 設定高度並加入 hover 效果
+                        tdLesson.dataset.day = day;
+                        tdLesson.dataset.slot = slot.id;
+                        
+                        // 點擊格子的測試功能 (為第三步做準備)
+                        tdLesson.onclick = () => {
+                            alert(`你點擊了 星期${day} 的第 ${slot.id} 節。\n未來這裡會彈出視窗讓你選擇班級、科目和課室！`);
+                        };
+
+                        tr.appendChild(tdLesson);
+                    });
+                }
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 網頁載入後執行渲染
+        window.onload = renderTable;
+
+    </script>
+</body>
+</html>
